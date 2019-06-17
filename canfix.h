@@ -75,6 +75,7 @@ class CanFix {
         byte writeFrame(CanFrame frame, byte mode);
         void parameterEnable(CanFrame frame);
         void handleNodeSpecific(CanFrame frame);
+        void handleFrame(CanFrame frame);
 
         //Function Pointers for Callbacks
         void (*report_callback)(void);

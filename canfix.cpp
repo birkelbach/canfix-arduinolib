@@ -19,34 +19,29 @@
 #include "canfix.h"
 #include <EEPROM.h>
 
-void CFParameter::setMetaData(byte meta)
-{
+void CFParameter::setMetaData(byte meta) {
     fcb &= 0x0F;
     fcb |= (meta << 4);
 }
 
-byte CFParameter::getMetaData(void)
-{
+byte CFParameter::getMetaData(void) {
     return fcb >> 4;
 }
 
-void CFParameter::setFlags(byte flags)
-{
+void CFParameter::setFlags(byte flags) {
     fcb &= 0xF0;
     fcb |= (flags & 0x0F);
 }
 
-byte CFParameter::getFlags(void)
-{
+byte CFParameter::getFlags(void) {
     return fcb & 0x0F;
 }
 
 
 /* Constructor for the CanFix Class.  pin is the slave select
- pin that the CAN controller should use.  device is the
- device type that will be used. */
-CanFix::CanFix(byte pin, byte device)
-{
+   pin that the CAN controller should use.  device is the
+   device type that will be used. */
+CanFix::CanFix(byte pin, byte device) {
     byte bitrate;
 
     deviceid = device;
@@ -74,8 +69,7 @@ CanFix::CanFix(byte pin, byte device)
    until the frame is written and return 0.  If mode == MODE_NONBLOCK
    it will attempt to send the frame and if it is successful it will
    return 0 otherwise it will return non-zero */
-byte CanFix::writeFrame(CanFrame frame, byte mode)
-{
+byte CanFix::writeFrame(CanFrame frame, byte mode) {
     byte result;
 
     while(1) {
@@ -126,7 +120,6 @@ void CanFix::parameterEnable(CanFrame frame) {
 }
 
 void CanFix::handleNodeSpecific(CanFrame frame) {
-    byte index, offset, result;
     int x;
     CanFrame rframe; //Response frame
 
@@ -263,165 +256,156 @@ void CanFix::handleNodeSpecific(CanFrame frame) {
     can->writeFrame(rframe);
 }
 
-/* The exec() function is the heart and soul of this library.  The
- application should call this function in each loop.  It will
- receive the data from the CAN Bus, deal with mandatory protocol
- issues and fire events if certain frames are received. */
-void CanFix::exec(void)
-{
-    byte rxstat, n;
-    CanFrame frame;
-    CanFrame rframe; //Response frame
-    CFParameter par;
+void CanFix::handleFrame(CanFrame frame) {
+  byte n;
+  CFParameter par;
 
-    rframe.eid = 0x00;
+  if(frame.id == 0x00) { /* Ignore ID 0 */
+      ;
+  } else if(frame.id < 256) { /* Node Alarms */
+      if(alarm_callback) {
+        alarm_callback(frame.id, *((word *)(&frame.data[0])), &frame.data[2], frame.length-2);
+      }
+  } else if(frame.id < 0x6E0) { /* Parameters */
+      if(param_callback) {
+          par.type = frame.id;
+          par.node = frame.data[0];
+          par.index = frame.data[1];
+          par.fcb = frame.data[2];
+          par.length = frame.length - 3;
+          for(n = 0; n<par.length; n++) par.data[n] = frame.data[3+n];
+          param_callback(par);
+      }
+  } else if(frame.id < 0x7E0) { /* Node Specific Message */
+      handleNodeSpecific(frame);
+  } else { /* Communication Channel */
+      ; /* Not implemented at the moment */
+  }
+}
+
+/* The exec() function is the heart and soul of this library.  The
+   application should call this function in each loop.  It will
+   receive the data from the CAN Bus, deal with mandatory protocol
+   issues and fire events if certain frames are received. */
+void CanFix::exec(void) {
+    byte rxstat;
+    CanFrame frame;
+
     rxstat = can->getRxStatus();
     if(rxstat & 0x40) {
         frame = can->readFrame(0);
+        handleFrame(frame);
     } else if(rxstat & 0x80) {
         frame = can->readFrame(1);
+        handleFrame(frame);
     } else {
         return;
     }
-    if(frame.id == 0x00) { /* Ignore ID 0 */
-        ;
-    } else if(frame.id < 256) { /* Node Alarms */
-        if(alarm_callback) {
-          alarm_callback(frame.id, *((word *)(&frame.data[0])), &frame.data[2], frame.length-2);
-        }
-    } else if(frame.id < 0x6E0) { /* Parameters */
-        if(param_callback) {
-            par.type = frame.id;
-            par.node = frame.data[0];
-            par.index = frame.data[1];
-            par.fcb = frame.data[2];
-            par.length = frame.length - 3;
-            for(n = 0; n<par.length; n++) par.data[n] = frame.data[3+n];
-            param_callback(par);
-        }
-    } else if(frame.id < 0x7E0) { /* Node Specific Message */
-        handleNodeSpecific(frame);
-    } else { /* Communication Channel */
-        ; /* Not implemented at the moment */
-    }
+    // TODO Check for CAN errors and buffer overflows
 }
 
-int CanFix::getBitRate(void)
-{
-  byte bitrate;
-  bitrate = EEPROM.read(EE_BITRATE);
-  if(bitrate == BITRATE_125) return 125;
-  else if(bitrate == BITRATE_250) return 250;
-  else if(bitrate == BITRATE_500) return 500;
-  else if(bitrate == BITRATE_1000) return 1000;
-  else setBitRate(125);
+int CanFix::getBitRate(void) {
+    byte bitrate;
+    bitrate = EEPROM.read(EE_BITRATE);
+    if(bitrate == BITRATE_125) return 125;
+    else if(bitrate == BITRATE_250) return 250;
+    else if(bitrate == BITRATE_500) return 500;
+    else if(bitrate == BITRATE_1000) return 1000;
+    else setBitRate(125);
 
-  return 125;
+    return 125;
 }
 
 /* This sets the bitrate in the EEPROM.  It does not change the
  actual bitrate in the controller */
-void CanFix::setBitRate(int bitrate)
-{
-  byte br = 0;
-  if(bitrate==125)  br = BITRATE_125;
-  if(bitrate==250)  br = BITRATE_250;
-  if(bitrate==500)  br = BITRATE_500;
-  if(bitrate==1000) br = BITRATE_1000;
-  if(EEPROM.read(EE_BITRATE) != br) {
-    EEPROM.write(EE_BITRATE, br);
-  }
+void CanFix::setBitRate(int bitrate) {
+    byte br = 0;
+    if(bitrate==125)  br = BITRATE_125;
+    if(bitrate==250)  br = BITRATE_250;
+    if(bitrate==500)  br = BITRATE_500;
+    if(bitrate==1000) br = BITRATE_1000;
+    if(EEPROM.read(EE_BITRATE) != br) {
+        EEPROM.write(EE_BITRATE, br);
+    }
 }
 
-byte CanFix::getNodeNumber(void)
-{
-  byte x;
+byte CanFix::getNodeNumber(void) {
+    byte x;
 
-  x = EEPROM.read(EE_NODE);
-  if(x == 0x00) x = deviceid;
-  return x;
+    x = EEPROM.read(EE_NODE);
+    if(x == 0x00) x = deviceid;
+    return x;
 }
 
-void CanFix::setModel(unsigned long m)
-{
-  model = m;
+void CanFix::setModel(unsigned long m) {
+    model = m;
 }
 
-void CanFix::setFwVersion(byte v)
-{
-  fw_version = v;
+void CanFix::setFwVersion(byte v) {
+    fw_version = v;
 }
 
 /* Sends a Node Status Information Message.  type is the parameter type,
    *data is the buffer of up to 4 bytes and length is the number of
    bytes in *data */
-void CanFix::sendStatus(word type, byte *data, byte length)
-{
-  CanFrame frame;
-  byte n;
-  frame.id = NSM_START + getNodeNumber();
-  frame.eid = 0x00;
-  frame.data[0] = NSM_STATUS;
-  frame.data[1] = type;
-  frame.data[2] = type >> 8;
-  for(n=0; n<length; n++) {
-    frame.data[3+n] = data[n];
-  }
-  frame.length = length + 3;
-  writeFrame(frame, MODE_BLOCK);
+void CanFix::sendStatus(word type, byte *data, byte length) {
+    CanFrame frame;
+    byte n;
+    frame.id = NSM_START + getNodeNumber();
+    frame.eid = 0x00;
+    frame.data[0] = NSM_STATUS;
+    frame.data[1] = type;
+    frame.data[2] = type >> 8;
+    for(n=0; n<length; n++) {
+        frame.data[3+n] = data[n];
+    }
+    frame.length = length + 3;
+    writeFrame(frame, MODE_BLOCK);
 }
 
-void CanFix::sendParam(CFParameter p)
-{
-  byte n;
-  CanFrame frame;
-  frame.id = p.type;
-  frame.eid = 0;
-  frame.data[0] = getNodeNumber();
-  frame.data[1] = p.index;
-  frame.data[2] = p.fcb;
-  frame.length = p.length + 3;
-  for(n = 0; n<p.length && n<5; n++) frame.data[3+n] = p.data[n];
-  writeFrame(frame, MODE_BLOCK);
+void CanFix::sendParam(CFParameter p) {
+    byte n;
+    CanFrame frame;
+    frame.id = p.type;
+    frame.eid = 0;
+    frame.data[0] = getNodeNumber();
+    frame.data[1] = p.index;
+    frame.data[2] = p.fcb;
+    frame.length = p.length + 3;
+    for(n = 0; n<p.length && n<5; n++) frame.data[3+n] = p.data[n];
+    writeFrame(frame, MODE_BLOCK);
 }
 
-void CanFix::sendAlarm(word type, byte *data, byte length)
-{
-  ;
+void CanFix::sendAlarm(word type, byte *data, byte length) {
+    ;
 }
 
 void CanFix::set_report_callback(void (*f)(void)) {
     report_callback = f;
 }
 
-void CanFix::set_twoway_callback(byte (*f)(byte, word))
-{
-  twoway_callback = f;
+void CanFix::set_twoway_callback(byte (*f)(byte, word)) {
+    twoway_callback = f;
 }
 
-void CanFix::set_config_callback(byte (*f)(word, byte *))
-{
-  config_callback = f;
+void CanFix::set_config_callback(byte (*f)(word, byte *)) {
+    config_callback = f;
 }
 
-void CanFix::set_query_callback(byte (*f)(word, byte *))
-{
-  query_callback = f;
+void CanFix::set_query_callback(byte (*f)(word, byte *)) {
+    query_callback = f;
 }
 
-void CanFix::set_param_callback(void (*f)(CFParameter))
-{
-  param_callback = f;
+void CanFix::set_param_callback(void (*f)(CFParameter)) {
+    param_callback = f;
 }
 
-void CanFix::set_alarm_callback(void (*f)(byte, word, byte*, byte))
-{
-  alarm_callback = f;
+void CanFix::set_alarm_callback(void (*f)(byte, word, byte*, byte)) {
+    alarm_callback = f;
 }
 
-void CanFix::set_stream_callback(void (*f)(byte, byte *, byte))
-{
-  stream_callback = f;
+void CanFix::set_stream_callback(void (*f)(byte, byte *, byte)) {
+    stream_callback = f;
 }
 
 /* Returns non-zero if the parameter is enabled */
@@ -431,8 +415,8 @@ byte CanFix::checkParameterEnable(word id) {
     offset = id % 8;
     result = EEPROM.read(index);
     if(bitRead(result, offset)) {
-      return 0;
+        return 0;
     } else {
-      return 1;
+        return 1;
     }
 }
