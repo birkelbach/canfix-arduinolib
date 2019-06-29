@@ -81,7 +81,7 @@ class CanFix {
         void (*report_callback)(void);
         byte (*twoway_callback)(byte, word);
         byte (*config_callback)(word, byte *);
-        byte (*query_callback)(word, byte *);
+        byte (*query_callback)(word, byte *, byte *);
         void (*param_callback)(CFParameter);
         void (*alarm_callback)(byte, word, byte*, byte);
         void (*stream_callback)(byte, byte *, byte);
@@ -106,7 +106,7 @@ class CanFix {
         void set_report_callback(void (*report_callback)(void));
         void set_twoway_callback(byte (*twoway_callback)(byte, word));
         void set_config_callback(byte (*config_callback)(word, byte *));
-        void set_query_callback(byte (*query_callback)(word, byte *));
+        void set_query_callback(byte (*query_callback)(word, byte *, byte *));
         void set_param_callback(void (*param_callback)(CFParameter));
         void set_alarm_callback(void (*alarm_callback)(byte, word, byte*, byte));
         void set_stream_callback(void (*stream_callback)(byte, byte *, byte));

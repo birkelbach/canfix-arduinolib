@@ -121,6 +121,7 @@ void CanFix::parameterEnable(CanFrame frame) {
 
 void CanFix::handleNodeSpecific(CanFrame frame) {
     int x;
+    byte length;
     CanFrame rframe; //Response frame
 
     // This prepares a generic response
@@ -187,7 +188,7 @@ void CanFix::handleNodeSpecific(CanFrame frame) {
            parameter is disabled.  A 0 in the bit location means enabled
            and a 1 means disabled. */
         case NSM_DISABLE:
-            if(frame.data[1]==getNodeNumber() || frame.data[0]==0) {
+            if(frame.data[1]==getNodeNumber() || frame.data[1]==0) {
                 parameterEnable(frame);
             }
             return;
@@ -197,7 +198,7 @@ void CanFix::handleNodeSpecific(CanFrame frame) {
             }
             return;
         case NSM_REPORT:
-            if(frame.data[1]==getNodeNumber() || frame.data[0]==0) {
+            if(frame.data[1]==getNodeNumber() || frame.data[1]==0) {
                 if(report_callback) report_callback();
             }
             return;
@@ -220,33 +221,29 @@ void CanFix::handleNodeSpecific(CanFrame frame) {
             }
         case NSM_CONFSET:
             if(frame.data[1]==getNodeNumber()) {
-                if(frame.data[0]!=0x00) {
-                    if(config_callback) {
-                        rframe.data[2] = config_callback(*((word *)(&frame.data[2])), &frame.data[4]);
-                    } else {
-                        rframe.data[2] = 1;
-                    }
-                    rframe.length = 3;
-                    break;
+                if(config_callback) {
+                    rframe.data[2] = config_callback(*((word *)(&frame.data[2])), &frame.data[4]);
+                } else {
+                    rframe.data[2] = 1;
                 }
+                rframe.length = 3;
+                break;
             } else {
                 return;
             }
         case NSM_CONFGET:
             if(frame.data[1]==getNodeNumber()) {
-                if(frame.data[0]!=0x00) {
-                    if(query_callback) {
-                        rframe.data[2] = query_callback(*((word *)(&frame.data[2])), &rframe.data[3]);
-                    } else {
-                        rframe.data[2] = 1;
-                    }
-                    if(rframe.data[2]==0) { /* Send Success with data */
-                        rframe.length = 7;
-                    } else {
-                        rframe.length = 3; /* Just send the error */
-                    }
-                    break;
+                if(query_callback) {
+                    rframe.data[2] = query_callback(*((word *)(&frame.data[2])), &rframe.data[3], &length);
+                } else {
+                    rframe.data[2] = 1;
                 }
+                if(rframe.data[2]==0) { /* Send Success with data */
+                    rframe.length = 3+length;
+                } else {
+                    rframe.length = 3; /* Just send the error */
+                }
+                break;
             } else {
                 return;
             }
@@ -290,6 +287,7 @@ void CanFix::handleFrame(CanFrame frame) {
 void CanFix::exec(void) {
     byte rxstat;
     CanFrame frame;
+    static byte;
 
     rxstat = can->getRxStatus();
     if(rxstat & 0x40) {
@@ -392,7 +390,7 @@ void CanFix::set_config_callback(byte (*f)(word, byte *)) {
     config_callback = f;
 }
 
-void CanFix::set_query_callback(byte (*f)(word, byte *)) {
+void CanFix::set_query_callback(byte (*f)(word, byte *, byte *)) {
     query_callback = f;
 }
 
