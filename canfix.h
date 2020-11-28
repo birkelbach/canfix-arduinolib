@@ -19,10 +19,11 @@
 #ifndef __CANFIX_H
 #define __CANFIX_H
 
-#include "can.h"
+#include <mcp_can.h>
 
-#define EE_NODE 0x00
-#define EE_BITRATE 0x01
+//
+#define EE_NODE 0
+#define EE_BITRATE 1
 
 //Bitrate definitions for the can_init() function
 #define BITRATE_125  0
@@ -53,6 +54,16 @@
 #define FCB_QUALITY   0x02;
 #define FCB_FAIL      0x04;
 
+#define FIX_TACH1 0x200
+
+typedef struct {
+  INT32U id;
+  byte eid;
+  byte length;
+  byte data[8];
+} CanFrame;
+
+
 class CFParameter {
     public:
         word type;
@@ -71,7 +82,8 @@ class CanFix {
     private:
         byte deviceid, fw_version;  //Node identification information
         unsigned long model;  //Model number for node identification
-        CAN *can;             // Pointer to CAN object
+//        CAN *can;             // Pointer to CAN object
+        MCP_CAN *CAN;
         byte writeFrame(CanFrame frame, byte mode);
         void parameterEnable(CanFrame frame);
         void handleNodeSpecific(CanFrame frame);

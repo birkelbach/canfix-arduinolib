@@ -56,11 +56,15 @@ CanFix::CanFix(byte pin, byte device) {
     alarm_callback = NULL;
     stream_callback = NULL;
 
-    can = new CAN(pin);
-    can->sendCommand(CMD_RESET);
+     CAN = new MCP_CAN(pin);
+    CAN->begin(MCP_ANY, CAN_125KBPS, MCP_8MHZ);
+    CAN->setMode(MCP_NORMAL);
+
+    //can = new CAN(pin);
+    //can->sendCommand(CMD_RESET);
     //can->setBitRate(bitrate = getBitRate());
-    can->setBitRate(bitrate = 125);
-    can->setMode(MODE_NORMAL);
+    //can->setBitRate(bitrate = 125);
+    //can->setMode(MODE_NORMAL);
 }
 
 /* This is a wrapper for the CAN.writeFrame() function. It attempts
@@ -73,8 +77,9 @@ byte CanFix::writeFrame(CanFrame frame, byte mode) {
     byte result;
 
     while(1) {
-        result = can->writeFrame(frame);
-        if(result == 0) {
+        result = CAN->sendMsgBuf(frame.id, frame.length, frame.data);
+        //result = can->writeFrame(frame);
+        if(result == CAN_OK) {
             return 0;
         } else {
             if(mode) return 1;
@@ -100,7 +105,8 @@ void CanFix::parameterEnable(CanFrame frame) {
     /* Check Range */
     if(x<256 || x>1759) {
         rframe.data[2]=0x01;
-        can->writeFrame(rframe);
+    //    can->writeFrame(rframe);
+        writeFrame(rframe, MODE_NONBLOCK);
         return;
     }
     rframe.data[2]=0x00;
@@ -116,7 +122,8 @@ void CanFix::parameterEnable(CanFrame frame) {
             EEPROM.write(index, result);
         }
     }
-    can->writeFrame(rframe);
+    //can->writeFrame(rframe);
+    writeFrame(rframe, MODE_NONBLOCK);
 }
 
 void CanFix::handleNodeSpecific(CanFrame frame) {
@@ -157,13 +164,14 @@ void CanFix::handleNodeSpecific(CanFrame frame) {
                 } else {
                     rframe.data[2] = 0x01;
                     rframe.length = 3;
-                    can->writeFrame(rframe);
+                    //can->writeFrame(rframe);
+                    writeFrame(rframe, MODE_NONBLOCK);
                     return;
                 }
-                setBitRate(x);
-                can->setMode(MODE_CONFIG);
-                can->setBitRate(x);
-                can->setMode(MODE_NORMAL);
+                // setBitRate(x);
+                // can->setMode(MODE_CONFIG);
+                // can->setBitRate(x);
+                // can->setMode(MODE_NORMAL);
             } else {
                 return;
             }
@@ -250,7 +258,9 @@ void CanFix::handleNodeSpecific(CanFrame frame) {
         default:
           return;
     }
-    can->writeFrame(rframe);
+    //can->writeFrame(rframe);
+    writeFrame(rframe, MODE_NONBLOCK);
+
 }
 
 void CanFix::handleFrame(CanFrame frame) {
@@ -285,20 +295,24 @@ void CanFix::handleFrame(CanFrame frame) {
    receive the data from the CAN Bus, deal with mandatory protocol
    issues and fire events if certain frames are received. */
 void CanFix::exec(void) {
-    byte rxstat;
+//    byte rxstat;
     CanFrame frame;
-    static byte;
-
-    rxstat = can->getRxStatus();
-    if(rxstat & 0x40) {
-        frame = can->readFrame(0);
+//    static byte;
+    while(CAN->readMsgBuf(&frame.id, &frame.eid, &frame.length, frame.data) != CAN_NOMSG) {
         handleFrame(frame);
-    } else if(rxstat & 0x80) {
-        frame = can->readFrame(1);
-        handleFrame(frame);
-    } else {
-        return;
     }
+
+
+    // rxstat = can->getRxStatus();
+    // if(rxstat & 0x40) {
+    //     frame = can->readFrame(0);
+    //     handleFrame(frame);
+    // } else if(rxstat & 0x80) {
+    //     frame = can->readFrame(1);
+    //     handleFrame(frame);
+    // } else {
+    //     return;
+    // }
     // TODO Check for CAN errors and buffer overflows
 }
 
